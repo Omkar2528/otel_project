@@ -1,0 +1,57 @@
+<?php
+require __DIR__ . '/vendor/autoload.php';
+
+use OpenTelemetry\SDK\Logs\LoggerProvider;
+use OpenTelemetry\SDK\Logs\Processor\BatchLogRecordProcessor;
+use OpenTelemetry\Contrib\Otlp\LogsExporter;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
+use OpenTelemetry\SDK\Resource\ResourceInfo;
+use OpenTelemetry\SDK\Common\Attribute\Attributes;
+use OpenTelemetry\SemConv\ResourceAttributes;
+use OpenTelemetry\SDK\Common\Time\ClockFactory;
+
+// Use the service name defined in your collector config
+$serviceName = 'otel-php-auto-OP';
+$endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://otel:4318';
+
+// Create the transport for OTLP/HTTP
+$transport = (new OtlpHttpTransportFactory())->create(
+    $endpoint . '/v1/logs',
+    'application/json'
+);
+
+$exporter = new LogsExporter($transport);
+
+/**
+ * We use BatchLogRecordProcessor to group logs.
+ * To prevent 408 timeouts, we set a reasonable scheduled delay (1000ms).
+ */
+$processor = new BatchLogRecordProcessor(
+    $exporter, 
+    ClockFactory::getDefault(),
+    2048,  // maxQueueSize
+    1000,  // scheduledDelayMillis
+    512    // maxExportBatchSize
+);
+
+// Define Resource attributes to show up in SigNoz filters
+$resource = ResourceInfo::create(Attributes::create([
+    ResourceAttributes::SERVICE_NAME => $serviceName,
+    'deployment.environment' => 'dev',
+    'host.name' => gethostname(),
+]));
+
+$loggerProvider = LoggerProvider::builder()
+    ->addLogRecordProcessor($processor)
+    ->setResource($resource)
+    ->build();
+
+/**
+ * IMPORTANT: We return an array containing both the Logger and the Provider.
+ * This allows index.php to call $logProvider->shutdown() at the very end
+ * of the script execution to flush the remaining logs.
+ */
+return [
+    'logger' => $loggerProvider->getLogger('my-app-logger'),
+    'provider' => $loggerProvider
+];

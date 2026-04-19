@@ -1,0 +1,64 @@
+services:
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    container_name: otel-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  otel:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    # FIX: Use numeric ID 0 instead of the name 'root'
+    user: "0:0" 
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "4327:4317"
+      - "4328:4318"
+    depends_on:
+      - mysql
+
+  php-auto:
+    build: .
+    container_name: otel-php-auto-OP-app
+    ports:
+      - "8082:80"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318
+      OTEL_PHP_AUTOLOAD_ENABLED: "true"
+      OTEL_SERVICE_NAME: otel-php-auto-OP
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASS: root
+      DB_NAME: test
+    depends_on:
+      - mysql
+      - otel
+
+  load-generator:
+    image: php:8.2-cli
+    container_name: otel-php-auto-OP-loadgen
+    volumes:
+      - ./load-generator.php:/app/load-generator.php
+    working_dir: /app
+    environment:
+      TARGET_URL: http://php-auto:80/index.php
+    command: ["php", "/app/load-generator.php"]
+    depends_on:
+      - php-auto

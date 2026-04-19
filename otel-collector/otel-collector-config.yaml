@@ -1,0 +1,40 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+  # This adds ECS metadata (Task ID, Cluster Name) to your traces automatically
+  resourcedetection:
+    detectors: [env, ecs]
+    timeout: 2s
+    override: true
+
+exporters:
+  otlp/signoz:
+    endpoint: "https://ingest.us2.signoz.cloud:443" # Use your specific region endpoint
+    headers:
+      "signoz-ingestion-key": "rSIDSZ7tzIjUmGgXBnefO9Bzi-pnmA7AWrT-" # Your API Key
+    tls:
+      insecure: false
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resourcedetection, batch]
+      exporters: [otlp/signoz]
+    metrics:
+      receivers: [otlp]
+      processors: [resourcedetection, batch]
+      exporters: [otlp/signoz]
+    logs:
+      receivers: [otlp]
+      processors: [resourcedetection, batch]
+      exporters: [otlp/signoz]
