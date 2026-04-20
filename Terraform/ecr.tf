@@ -48,12 +48,3 @@ resource "aws_ecr_repository" "otel_collector" {
   }
 }
 
-output "php_app_ecr_url" {
-  description = "ECR URL for the PHP application"
-  value       = aws_ecr_repository.php_app.repository_url
-}
-
-output "otel_collector_ecr_url" {
-  description = "ECR URL for the OTel Collector"
-  value       = aws_ecr_repository.otel_collector.repository_url
-}

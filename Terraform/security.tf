@@ -1,7 +1,9 @@
+# ── ECS Task Security Group ──────────────────────────────────────────────────
 resource "aws_security_group" "ecs_sg" {
   name   = "otel-ecs-sg"
   vpc_id = data.aws_vpc.default.id
 
+  # Accept traffic from the ALB only
   ingress {
     from_port       = 80
     to_port         = 80
