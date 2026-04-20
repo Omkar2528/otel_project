@@ -11,30 +11,31 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4   # ✅ FIXED
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2   # ✅ FIXED
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Debug Secrets (IMPORTANT)
-        run: |
-          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then echo "❌ ACCESS KEY EMPTY"; else echo "✅ ACCESS KEY OK"; fi
-          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then echo "❌ SECRET KEY EMPTY"; else echo "✅ SECRET KEY OK"; fi
-
       - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push PHP App
+        env:
+          REGISTRY: ${{ steps.login-ecr.registry }}
+          REPO: otel-php-app
         run: |
-          aws ecr get-login-password --region us-east-1 | \
-          docker login --username AWS --password-stdin 056449379091.dkr.ecr.us-east-1.amazonaws.com
+          docker build -t $REGISTRY/$REPO:latest .
+          docker push $REGISTRY/$REPO:latest
 
-      - name: Build Image
-        run: docker build -t otel-php-app .
-
-      - name: Tag Image
-        run: docker tag otel-php-app:latest 056449379091.dkr.ecr.us-east-1.amazonaws.com/otel-php-app:latest
-
-      - name: Push Image
-        run: docker push 056449379091.dkr.ecr.us-east-1.amazonaws.com/otel-php-app:latest
+      - name: Build and Push OTel Collector
+        env:
+          REGISTRY: ${{ steps.login-ecr.registry }}
+          REPO: otel-collector
+        run: |
+          docker build -t $REGISTRY/$REPO:latest ./otel-collector
+          docker push $REGISTRY/$REPO:latest

@@ -5,6 +5,7 @@ use OpenTelemetry\Context\Context;
 
 /**
  * 1. ALB HEALTH CHECK BYPASS
+ * This must be at the very top to avoid 404s and timeouts
  */
 if ($_SERVER['REQUEST_URI'] === '/health') {
     header('Content-Type: text/plain');
@@ -12,7 +13,7 @@ if ($_SERVER['REQUEST_URI'] === '/health') {
     exit('OK');
 }
 
-// 2. Setup Otel (Traces and Logs)
+// 2. Setup Otel
 $otel = require 'bootstrap.php';
 $tracer = $otel['tracer'];
 $traceProvider = $otel['provider'];
@@ -23,7 +24,7 @@ $logProvider = $logData['provider'];
 
 require 'AutoPDO.php';
 
-// 3. Start Root Span
+// 3. Start Span
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $uri = $_SERVER['REQUEST_URI'] ?? '/';
 $span = $tracer->spanBuilder("$method $uri")->startSpan();
@@ -73,23 +74,17 @@ try {
     );
 
     http_response_code(500);
-    echo json_encode([
-        "error" => "Internal Server Error",
-        "debug_message" => $e->getMessage()
-    ]);
+    echo json_encode(["error" => "Internal Server Error"]);
 
 } finally {
     $span->end();
     $scope->detach(); 
     
+    // Graceful OTel Shutdown - wrap in try/catch to prevent 500s if collector is slow
     try {
-        if (isset($logProvider)) {
-            $logProvider->shutdown();
-        }
-        if (isset($traceProvider)) {
-            $traceProvider->shutdown();
-        }
-    } catch (Exception $ignore) {
-        // Silently fail if OTel collector is unreachable
+        if (isset($logProvider)) { $logProvider->shutdown(); }
+        if (isset($traceProvider)) { $traceProvider->shutdown(); }
+    } catch (Throwable $t) {
+        // Ignore shutdown errors to ensure user gets the response
     }
 }

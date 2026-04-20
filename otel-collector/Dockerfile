@@ -1,7 +1,7 @@
 FROM otel/opentelemetry-collector-contrib:latest
 
 # Copy your config into the container
-COPY config.yaml /etc/otelcol/config.yaml
+COPY otel-collector-config.yaml /etc/otelcol/config.yaml
 
 # Set the entrypoint to use this config
 ENTRYPOINT ["/otelcol-contrib"]

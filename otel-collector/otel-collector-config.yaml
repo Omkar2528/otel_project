@@ -10,7 +10,6 @@ processors:
   batch:
     send_batch_size: 1000
     timeout: 10s
-  # This adds ECS metadata (Task ID, Cluster Name) to your traces automatically
   resourcedetection:
     detectors: [env, ecs]
     timeout: 2s
@@ -18,9 +17,9 @@ processors:
 
 exporters:
   otlp/signoz:
-    endpoint: "https://ingest.us2.signoz.cloud:443" # Use your specific region endpoint
+    endpoint: "https://ingest.us2.signoz.cloud:443"
     headers:
-      "signoz-ingestion-key": "rSIDSZ7tzIjUmGgXBnefO9Bzi-pnmA7AWrT-" # Your API Key
+      "signoz-ingestion-key": "rSIDSZ7tzIjUmGgXBnefO9Bzi-pnmA7AWrT-"
     tls:
       insecure: false
 
