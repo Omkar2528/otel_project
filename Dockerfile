@@ -50,7 +50,6 @@ WORKDIR /var/www/html
 
 COPY . .
 
-# Enable Apache rewrite
 RUN a2enmod rewrite
 
 # ---- Recommended PHP ini tweaks for production ----
@@ -80,7 +79,7 @@ RUN chown -R www-data:www-data /var/www/html \
 EXPOSE 80
 
 # Health-check so ECS knows when the container is ready
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
-    CMD curl -f http://localhost/health.php || exit 1
+#HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+ #   CMD curl -f http://localhost/health.php || exit 1
 
-CMD ["apache2-foreground"]
+#CMD ["apache2-foreground"]
