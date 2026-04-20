@@ -5,19 +5,15 @@ FROM composer:2 AS vendor
 
 WORKDIR /app
 
-# ✅ Install required PHP extensions for Composer
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libzip-dev \
-    && docker-php-ext-install pdo pdo_mysql zip \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
 COPY composer.json composer.lock* ./
 
+# ✅ Ignore missing PHP extensions in build stage
 RUN composer install \
         --no-interaction \
         --prefer-dist \
         --optimize-autoloader \
-        --no-dev
+        --no-dev \
+        --ignore-platform-req=ext-pdo_mysql
 
 # ────────────────────────────────────────────────────────────
 # Stage 2 – runtime image
