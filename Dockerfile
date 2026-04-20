@@ -3,22 +3,25 @@
 # ────────────────────────────────────────────────────────────
 FROM composer:2 AS vendor
 
+#WORKDIR /app
+
+#COPY composer.json composer.lock* ./
+# Install system dependencies (if needed)
+#RUN apt-get update && apt-get install -y \
+#    libzip-dev \
+ #   unzip \
+  #  && docker-php-ext-install pdo pdo_mysql
+
+# Install Composer dependencies
 WORKDIR /app
 
 COPY composer.json composer.lock* ./
-# Install system dependencies (if needed)
-RUN apt-get update && apt-get install -y \
-    libzip-dev \
-    unzip \
-    && docker-php-ext-install pdo pdo_mysql
 
-# Install Composer dependencies
 RUN composer install \
-        --no-interaction \
-        --prefer-dist \
-        --optimize-autoloader \
-        --no-dev
-
+    --no-dev \
+    --no-interaction \
+    --prefer-dist \
+    --optimize-autoloader
 # ────────────────────────────────────────────────────────────
 # Stage 2 – runtime image
 # ────────────────────────────────────────────────────────────
