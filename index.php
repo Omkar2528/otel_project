@@ -1,11 +1,11 @@
 <?php
+
 use OpenTelemetry\API\Logs\LogRecord;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\Context\Context;
 
 /**
- * 1. ALB HEALTH CHECK BYPASS
- * This must be at the very top to avoid 404s and timeouts
+ * SINGLE SOURCE OF TRUTH FOR HEALTH CHECK
  */
 if ($_SERVER['REQUEST_URI'] === '/health') {
     header('Content-Type: text/plain');
@@ -13,7 +13,9 @@ if ($_SERVER['REQUEST_URI'] === '/health') {
     exit('OK');
 }
 
-// 2. Setup Otel
+/**
+ * SAFE OTEL BOOTSTRAP
+ */
 $otel = require 'bootstrap.php';
 $tracer = $otel['tracer'];
 $traceProvider = $otel['provider'];
@@ -24,67 +26,65 @@ $logProvider = $logData['provider'];
 
 require 'AutoPDO.php';
 
-// 3. Start Span
-$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$uri = $_SERVER['REQUEST_URI'] ?? '/';
-$span = $tracer->spanBuilder("$method $uri")->startSpan();
+/**
+ * If OTEL is disabled, we still run app normally
+ */
+$span = null;
+$scope = null;
 
-$scope = $span->activate(); 
-$currentContext = Context::getCurrent();
+if ($tracer) {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $uri = $_SERVER['REQUEST_URI'] ?? '/';
 
-$span->setAttribute('http.method', $method);
-$span->setAttribute('http.target', $uri);
+    $span = $tracer->spanBuilder("$method $uri")->startSpan();
+    $scope = $span->activate();
+
+    $span->setAttribute('http.method', $method);
+    $span->setAttribute('http.target', $uri);
+}
 
 try {
-    $otelLogger->emit(
-        (new LogRecord("Inbound Request: $method $uri"))
-            ->setSeverityText('INFO')
-            ->setContext($currentContext)
-    );
 
     $pdo = new AutoPDO("mysql:host=mysql;dbname=test", "root", "root");
     $pdo->setTracer($tracer);
-    
+
     $sql = "SELECT * FROM products";
     $stmt = $pdo->query($sql);
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $otelLogger->emit(
-        (new LogRecord("Query Executed: $sql")) 
-            ->setSeverityText('INFO')
-            ->setContext($currentContext)
-            ->setAttribute('db.rows', count($data))
-    );
-
-    $span->setAttribute('http.status_code', 200);
-    $span->setStatus(StatusCode::STATUS_OK);
-
     header('Content-Type: application/json');
     echo json_encode($data);
 
-} catch (Exception $e) {
-    $span->setAttribute('http.status_code', 500);
-    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
-    $span->recordException($e);
+    if ($span) {
+        $span->setAttribute('http.status_code', 200);
+        $span->setStatus(StatusCode::STATUS_OK);
+    }
 
-    $otelLogger->emit(
-        (new LogRecord("Critical Error: " . $e->getMessage()))
-            ->setSeverityText('ERROR')
-            ->setContext($currentContext)
-    );
+} catch (Exception $e) {
+
+    if ($span) {
+        $span->setAttribute('http.status_code', 500);
+        $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+        $span->recordException($e);
+    }
 
     http_response_code(500);
     echo json_encode(["error" => "Internal Server Error"]);
 
 } finally {
-    $span->end();
-    $scope->detach(); 
-    
-    // Graceful OTel Shutdown - wrap in try/catch to prevent 500s if collector is slow
+
+    if ($span) {
+        $span->end();
+    }
+
+    if ($scope) {
+        $scope->detach();
+    }
+
     try {
-        if (isset($logProvider)) { $logProvider->shutdown(); }
-        if (isset($traceProvider)) { $traceProvider->shutdown(); }
+        if (isset($logProvider)) $logProvider->shutdown();
+        if (isset($traceProvider)) $traceProvider->shutdown();
     } catch (Throwable $t) {
-        // Ignore shutdown errors to ensure user gets the response
+        error_log("OTEL shutdown error: " . $t->getMessage());
     }
 }
