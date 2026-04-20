@@ -6,7 +6,13 @@ FROM composer:2 AS vendor
 WORKDIR /app
 
 COPY composer.json composer.lock* ./
-# --no-dev keeps the image lean; add --ignore-platform-reqs only if strictly needed
+# Install system dependencies (if needed)
+RUN apt-get update && apt-get install -y \
+    libzip-dev \
+    unzip \
+    && docker-php-ext-install pdo pdo_mysql
+
+# Install Composer dependencies
 RUN composer install \
         --no-interaction \
         --prefer-dist \

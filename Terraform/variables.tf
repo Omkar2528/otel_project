@@ -49,5 +49,5 @@ variable "db_user" {
 variable "db_pass" {
   description = "Database password"
   type        = string
-  sensitive   = true
+  default     = "root"
 }
