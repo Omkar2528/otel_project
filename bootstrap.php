@@ -11,6 +11,10 @@ use OpenTelemetry\Contrib\Otlp\SpanExporter;
 use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\SDK\Common\Time\ClockFactory;
 
+/**
+ * FIX: correct ECS/docker service discovery
+ * NOT localhost
+ */
 $endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://otel:4318';
 
 try {
@@ -23,7 +27,7 @@ try {
 
     $resource = ResourceInfo::create(
         Attributes::create([
-            ResourceAttributes::SERVICE_NAME => 'otel-php-auto-OP',
+            ResourceAttributes::SERVICE_NAME => getenv('OTEL_SERVICE_NAME') ?: 'otel-php-auto-OP',
             'deployment.environment' => 'dev',
         ])
     );
@@ -40,7 +44,8 @@ try {
     ];
 
 } catch (Throwable $e) {
-    error_log("OTEL failed: " . $e->getMessage());
+    // 🔥 CRITICAL: never break app if OTEL is down
+    error_log("OTEL init failed: " . $e->getMessage());
 
     return [
         'tracer' => null,
