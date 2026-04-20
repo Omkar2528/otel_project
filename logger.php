@@ -12,7 +12,7 @@ use OpenTelemetry\SDK\Common\Time\ClockFactory;
 
 // Use the service name defined in your collector config
 $serviceName = 'otel-php-auto-OP';
-$endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://otel:4318';
+$endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://127.0.0.1:4318';
 
 // Create the transport for OTLP/HTTP
 $transport = (new OtlpHttpTransportFactory())->create(

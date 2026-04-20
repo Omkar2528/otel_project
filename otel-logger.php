@@ -11,7 +11,7 @@ use OpenTelemetry\SemConv\ResourceAttributes;
 use OpenTelemetry\SDK\Common\Time\ClockFactory;
 
 $serviceName = 'otel-php-auto-OP';
-$endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://otel:4318';
+$endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://127.0.0.1:4318';
 
 $transport = (new OtlpHttpTransportFactory())->create(
     $endpoint . '/v1/logs',

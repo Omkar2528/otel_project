@@ -1,4 +1,3 @@
-
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
 
@@ -40,7 +39,7 @@ resource "aws_ecs_task_definition" "task" {
 
       essential = true
 
-      logConfiguration = {   # 🔥 FIXED (THIS WAS MISSING)
+      logConfiguration = {
         logDriver = "awslogs"
         options = {
           awslogs-group         = "/ecs/otel-app"
