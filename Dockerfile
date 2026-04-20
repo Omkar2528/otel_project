@@ -17,11 +17,17 @@ WORKDIR /app
 
 COPY composer.json composer.lock* ./
 
-RUN composer install \
+#RUN composer install \
+ #   --no-dev \
+  #  --no-interaction \
+   # --prefer-dist \
+    #--optimize-autoloader
+    RUN composer install \
     --no-dev \
     --no-interaction \
     --prefer-dist \
-    --optimize-autoloader
+    --optimize-autoloader \
+    --ignore-platform-req=ext-pdo_mysql
 # ────────────────────────────────────────────────────────────
 # Stage 2 – runtime image
 # ────────────────────────────────────────────────────────────
