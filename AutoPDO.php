@@ -1,46 +1,60 @@
 <?php
+
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\Context\Context;
 
+/**
+ * AutoPDO — PDO wrapper that automatically creates child spans for every query.
+ * Compatible with PHP 8.0+.
+ */
 class AutoPDO extends PDO
 {
-    private $tracer;
+    private ?object $tracer = null;
 
-    public function setTracer($tracer)
+    public function setTracer(?object $tracer): void
     {
         $this->tracer = $tracer;
     }
 
     #[\ReturnTypeWillChange]
-    public function query($sql, ?int $mode = null, ...$args)
+    public function query(string $sql, ?int $fetchMode = null, mixed ...$fetchModeArgs): \PDOStatement|false
     {
-        // Extract SQL operation for better SigNoz grouping
-        $operation = strtoupper(explode(' ', trim($sql))[0]);
+        if (!$this->tracer) {
+            // OTEL disabled — fall through to parent normally
+            return $fetchMode !== null
+                ? parent::query($sql, $fetchMode, ...$fetchModeArgs)
+                : parent::query($sql);
+        }
 
-        // 1. Get current active context (from the index.php span)
-        $parentContext = Context::getCurrent();
+        $operation = strtoupper(strtok(ltrim($sql), " \t\n\r"));
 
-        // 2. Build the span as a CHILD of the current context
-        $span = $this->tracer->spanBuilder("mysql.$operation")
-            ->setParent($parentContext) 
-            ->setSpanKind(SpanKind::KIND_CLIENT) 
-            ->setAttribute('db.system', 'mysql')
-            ->setAttribute('db.statement', $sql)
-            ->setAttribute('db.operation', $operation)
+        $span = $this->tracer->spanBuilder("db.$operation")
+            ->setParent(Context::getCurrent())
+            ->setSpanKind(SpanKind::KIND_CLIENT)
+            ->setAttribute('db.system',         'mysql')
+            ->setAttribute('db.operation',      $operation)
+            ->setAttribute('db.statement',      $sql)
+            ->setAttribute('db.name',           getenv('DB_NAME') ?: 'test')
+            ->setAttribute('net.peer.name',     getenv('DB_HOST') ?: 'mysql')
+            ->setAttribute('net.peer.port',     3306)
             ->startSpan();
 
-        // 3. Make this span active so logs/sub-calls link here
         $scope = $span->activate();
 
         try {
-            $result = parent::query($sql, $mode, ...$args);
+            $result = $fetchMode !== null
+                ? parent::query($sql, $fetchMode, ...$fetchModeArgs)
+                : parent::query($sql);
+
             $span->setStatus(StatusCode::STATUS_OK);
             return $result;
-        } catch (Exception $e) {
+
+        } catch (Throwable $e) {
             $span->recordException($e);
             $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
             throw $e;
+
         } finally {
             $scope->detach();
             $span->end();

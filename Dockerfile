@@ -1,33 +1,62 @@
+# ────────────────────────────────────────────────────────────
+# Stage 1 – install Composer dependencies (build cache friendly)
+# ────────────────────────────────────────────────────────────
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+COPY composer.json composer.lock* ./
+# --no-dev keeps the image lean; add --ignore-platform-reqs only if strictly needed
+RUN composer install \
+        --no-interaction \
+        --prefer-dist \
+        --optimize-autoloader \
+        --no-dev
+
+# ────────────────────────────────────────────────────────────
+# Stage 2 – runtime image
+# ────────────────────────────────────────────────────────────
 FROM php:8.2-apache
 
-# Install system dependencies and PHP extensions
-RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    curl \
-    libzip-dev \
-    && docker-php-ext-install pdo pdo_mysql zip
+# System deps + PHP extensions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libzip-dev \
+        unzip \
+        curl \
+    && docker-php-ext-install pdo pdo_mysql zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Get latest Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Enable Apache mod_rewrite
+# Apache mod_rewrite
 RUN a2enmod rewrite
+
+# ---- Recommended PHP ini tweaks for production ----
+RUN { \
+        echo 'expose_php = Off'; \
+        echo 'display_errors = Off'; \
+        echo 'log_errors = On'; \
+        echo 'error_log = /dev/stderr'; \
+        echo 'memory_limit = 256M'; \
+    } > /usr/local/etc/php/conf.d/app.ini
 
 WORKDIR /var/www/html
 
-# Copy composer files first for better caching
-COPY composer.json ./
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader || true
+# Copy vendor from build stage (avoids installing Composer in runtime image)
+COPY --from=vendor /app/vendor ./vendor
 
 # Copy application source
 COPY . .
 
-# Set permissions for Apache
-RUN chown -R www-data:www-data /var/www/html
+# Drop the .git folder and any local override files
+RUN rm -rf .git otel_project Terraform .github
 
-# Expose port 80
+# Permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html
+
 EXPOSE 80
 
-# Start Apache in foreground
+# Health-check so ECS knows when the container is ready
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD curl -f http://localhost/health.php || exit 1
+
 CMD ["apache2-foreground"]

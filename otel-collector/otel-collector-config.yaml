@@ -7,33 +7,84 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  batch:
-    send_batch_size: 1000
-    timeout: 10s
+  # Adds ECS task metadata (cluster, task ARN, container name) to every signal
   resourcedetection:
-    detectors: [env, ecs]
+    detectors: [env, ecs, ec2]
     timeout: 2s
     override: true
 
+  # Enriches resource attributes with ECS-specific tags
+  resource:
+    attributes:
+      - action: upsert
+        key: deployment.environment
+        from_attribute: DEPLOYMENT_ENVIRONMENT
+      - action: upsert
+        key: deployment.environment
+        value: production   # fallback if env var is absent
+
+  # Batch signals for throughput efficiency
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+
 exporters:
-  otlp/signoz:
-    endpoint: "https://ingest.us2.signoz.cloud:443"
-    headers:
-      "signoz-ingestion-key": "rSIDSZ7tzIjUmGgXBnefO9Bzi-pnmA7AWrT-"
-    tls:
-      insecure: false
+  # ── CloudWatch Logs ─────────────────────────────────────────────────────────
+  awscloudwatchlogs:
+    log_group_name: /ecs/otel-app
+    log_stream_name: otel-collector
+    region: us-east-1
+    # The ECS task execution role must have logs:CreateLogGroup,
+    # logs:CreateLogStream, logs:PutLogEvents permissions.
+
+  # ── CloudWatch Metrics (EMF) ─────────────────────────────────────────────────
+  awsemf:
+    namespace: ECS/OtelApp
+    region: us-east-1
+    log_group_name: /ecs/otel-app/metrics
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # ── AWS X-Ray (distributed tracing) ─────────────────────────────────────────
+  awsxray:
+    region: us-east-1
+    # index_all_attributes sends every span attribute as an X-Ray annotation
+    index_all_attributes: true
+
+  # ── (Optional) SigNoz — comment out if not using ───────────────────────────
+  # otlp/signoz:
+  #   endpoint: "https://ingest.us2.signoz.cloud:443"
+  #   headers:
+  #     "signoz-ingestion-key": "${SIGNOZ_INGESTION_KEY}"
+  #   tls:
+  #     insecure: false
+
+  # ── Debug to stdout (disable in production) ─────────────────────────────────
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     traces:
-      receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlp/signoz]
+      receivers:  [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters:  [awsxray, debug]
+
     metrics:
-      receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlp/signoz]
+      receivers:  [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters:  [awsemf, debug]
+
     logs:
-      receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlp/signoz]
+      receivers:  [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters:  [awscloudwatchlogs, debug]
+
+  # Expose collector health endpoint (useful for ECS health checks)
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
