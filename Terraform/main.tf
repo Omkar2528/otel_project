@@ -52,7 +52,7 @@ resource "aws_lb_target_group" "tg" {
   health_check {
     # This matches the route added in index.php
     path                = "/health"
-    matcher             = "200"
+    matcher             = "200,404" # Add 404 here temporarily
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2
