@@ -1,5 +1,5 @@
 provider "aws" {
-  region = "us-east-1"
+  region = var.region
 }
 
 data "aws_vpc" "default" {
@@ -13,7 +13,7 @@ data "aws_subnets" "default" {
   }
 }
 
-# ---------------- ALB SECURITY GROUP ----------------
+# ── ALB Security Group ───────────────────────────────────────────────────────
 resource "aws_security_group" "alb_sg" {
   name   = "otel-alb-sg"
   vpc_id = data.aws_vpc.default.id
@@ -33,7 +33,28 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-# ---------------- ALB ----------------
+# ── ECS Task Security Group ──────────────────────────────────────────────────
+resource "aws_security_group" "ecs_sg" {
+  name   = "otel-ecs-sg"
+  vpc_id = data.aws_vpc.default.id
+
+  # Accept traffic from the ALB only
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# ── ALB ──────────────────────────────────────────────────────────────────────
 resource "aws_lb" "alb" {
   name               = "otel-alb"
   load_balancer_type = "application"
@@ -41,7 +62,7 @@ resource "aws_lb" "alb" {
   security_groups    = [aws_security_group.alb_sg.id]
 }
 
-# ---------------- TARGET GROUP ----------------
+# ── Target Group ─────────────────────────────────────────────────────────────
 resource "aws_lb_target_group" "tg" {
   name        = "otel-tg"
   port        = 80
@@ -50,17 +71,16 @@ resource "aws_lb_target_group" "tg" {
   vpc_id      = data.aws_vpc.default.id
 
   health_check {
-    # This matches the route added in index.php
-    path                = "/health"
-    matcher             = "200,404" # Add 404 here temporarily
+    path                = "/health.php"
+    matcher             = "200"
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
   }
 }
 
-# ---------------- LISTENER ----------------
+# ── ALB Listener ─────────────────────────────────────────────────────────────
 resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_lb.alb.arn
   port              = 80
@@ -72,12 +92,12 @@ resource "aws_lb_listener" "listener" {
   }
 }
 
-# ---------------- ECS CLUSTER ----------------
+# ── ECS Cluster ──────────────────────────────────────────────────────────────
 resource "aws_ecs_cluster" "cluster" {
-  name = "otel-cluster"
-}
+  name = var.cluster_name
 
-# NOTE: In your aws_ecs_task_definition (not shown), 
-# ensure you set the environment variable:
-# OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318" 
-# if using a sidecar.
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+}

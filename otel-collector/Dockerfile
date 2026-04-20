@@ -1,8 +1,10 @@
-FROM otel/opentelemetry-collector-contrib:latest
+# Use a pinned version — "latest" breaks reproducibility
+FROM otel/opentelemetry-collector-contrib:0.100.0
 
-# Copy your config into the container
-COPY otel-collector-config.yaml /etc/otelcol/config.yaml
+COPY otel-collector-config.yaml /etc/otelcol-contrib/config.yaml
 
-# Set the entrypoint to use this config
+# Run as non-root
+USER 10001
+
 ENTRYPOINT ["/otelcol-contrib"]
-CMD ["--config", "/etc/otelcol/config.yaml"]
+CMD ["--config", "/etc/otelcol-contrib/config.yaml"]

@@ -12,14 +12,16 @@ use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\SDK\Common\Time\ClockFactory;
 
 /**
- * FIX: correct ECS/docker service discovery
- * NOT localhost
+ * OTEL_EXPORTER_OTLP_ENDPOINT must be set to the sidecar collector address.
+ * In ECS Fargate with awsvpc networking, the sidecar is reachable at 127.0.0.1.
+ * In docker-compose, it is reachable by the service name (e.g. http://otel:4318).
+ * Always configure via the env var; never hardcode.
  */
-$endpoint = getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://otel:4318';
+$endpoint = rtrim(getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://127.0.0.1:4318', '/');
 
 try {
     $transport = (new OtlpHttpTransportFactory())->create(
-        rtrim($endpoint, '/') . '/v1/traces',
+        $endpoint . '/v1/traces',
         'application/json'
     );
 
@@ -27,8 +29,9 @@ try {
 
     $resource = ResourceInfo::create(
         Attributes::create([
-            ResourceAttributes::SERVICE_NAME => getenv('OTEL_SERVICE_NAME') ?: 'otel-php-auto-OP',
-            'deployment.environment' => 'dev',
+            ResourceAttributes::SERVICE_NAME        => getenv('OTEL_SERVICE_NAME') ?: 'otel-php-app',
+            ResourceAttributes::DEPLOYMENT_ENVIRONMENT_NAME => getenv('APP_ENV') ?: 'production',
+            'host.name'                             => gethostname(),
         ])
     );
 
@@ -39,16 +42,16 @@ try {
     );
 
     return [
-        'tracer' => $tracerProvider->getTracer('otel-php-auto-op'),
-        'provider' => $tracerProvider
+        'tracer'   => $tracerProvider->getTracer('otel-php-app'),
+        'provider' => $tracerProvider,
     ];
 
 } catch (Throwable $e) {
-    // 🔥 CRITICAL: never break app if OTEL is down
-    error_log("OTEL init failed: " . $e->getMessage());
+    // Never break the application if OTEL is down
+    error_log('[OTEL] Tracer init failed: ' . $e->getMessage());
 
     return [
-        'tracer' => null,
-        'provider' => null
+        'tracer'   => null,
+        'provider' => null,
     ];
 }

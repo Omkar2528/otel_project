@@ -6,14 +6,12 @@ FROM composer:2 AS vendor
 WORKDIR /app
 
 COPY composer.json composer.lock* ./
-
-# ✅ Ignore missing PHP extensions in build stage
+# --no-dev keeps the image lean; add --ignore-platform-reqs only if strictly needed
 RUN composer install \
         --no-interaction \
         --prefer-dist \
         --optimize-autoloader \
-        --no-dev \
-        --ignore-platform-req=ext-pdo_mysql
+        --no-dev
 
 # ────────────────────────────────────────────────────────────
 # Stage 2 – runtime image
@@ -42,13 +40,13 @@ RUN { \
 
 WORKDIR /var/www/html
 
-# Copy vendor from build stage
+# Copy vendor from build stage (avoids installing Composer in runtime image)
 COPY --from=vendor /app/vendor ./vendor
 
 # Copy application source
 COPY . .
 
-# Cleanup unnecessary files
+# Drop the .git folder and any local override files
 RUN rm -rf .git otel_project Terraform .github
 
 # Permissions
