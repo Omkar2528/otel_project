@@ -5,8 +5,14 @@ FROM composer:2 AS vendor
 
 WORKDIR /app
 
+# ✅ Install required PHP extensions for Composer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libzip-dev \
+    && docker-php-ext-install pdo pdo_mysql zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 COPY composer.json composer.lock* ./
-# --no-dev keeps the image lean; add --ignore-platform-reqs only if strictly needed
+
 RUN composer install \
         --no-interaction \
         --prefer-dist \
@@ -40,13 +46,13 @@ RUN { \
 
 WORKDIR /var/www/html
 
-# Copy vendor from build stage (avoids installing Composer in runtime image)
+# Copy vendor from build stage
 COPY --from=vendor /app/vendor ./vendor
 
 # Copy application source
 COPY . .
 
-# Drop the .git folder and any local override files
+# Cleanup unnecessary files
 RUN rm -rf .git otel_project Terraform .github
 
 # Permissions
