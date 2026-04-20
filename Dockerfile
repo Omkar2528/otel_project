@@ -40,11 +40,17 @@ FROM php:8.2-apache
         #curl \
     #&& docker-php-ext-install pdo pdo_mysql zip \
     #&& apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install required extensions BEFORE composer
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     unzip \
     && docker-php-ext-install pdo pdo_mysql zip
-# Apache mod_rewrite
+
+WORKDIR /var/www/html
+
+COPY . .
+
+# Enable Apache rewrite
 RUN a2enmod rewrite
 
 # ---- Recommended PHP ini tweaks for production ----
