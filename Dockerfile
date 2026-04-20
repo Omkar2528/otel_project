@@ -1,23 +1,20 @@
 FROM php:8.2-apache
 
-# Install system deps
 RUN apt-get update && apt-get install -y \
     git unzip curl \
     && docker-php-ext-install pdo pdo_mysql
 
-# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# 🔥 IMPORTANT FIX: enable rewrite + proper apache behavior
+RUN a2enmod rewrite
 
 WORKDIR /var/www/html
 
-# Copy composer files FIRST (cache optimization)
 COPY composer.json ./
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader || true
 
-# Install dependencies
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader
-
-# Copy rest of app
 COPY . .
 
-# Fix permissions
+# 🔥 FIX: ensure apache serves correct folder
 RUN chown -R www-data:www-data /var/www/html

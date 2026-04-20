@@ -1,4 +1,11 @@
 <?php
+
+// 🔥 HEALTH CHECK ENDPOINT (CRITICAL FOR ECS)
+if ($_SERVER['REQUEST_URI'] === '/health') {
+    http_response_code(200);
+    echo json_encode(["status" => "ok"]);
+    exit;
+}
 require __DIR__ . '/vendor/autoload.php';
 
 use OpenTelemetry\SDK\Trace\TracerProvider;

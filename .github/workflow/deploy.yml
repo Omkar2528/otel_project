@@ -1,0 +1,40 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4   # ✅ FIXED
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2   # ✅ FIXED
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Debug Secrets (IMPORTANT)
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then echo "❌ ACCESS KEY EMPTY"; else echo "✅ ACCESS KEY OK"; fi
+          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then echo "❌ SECRET KEY EMPTY"; else echo "✅ SECRET KEY OK"; fi
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region us-east-1 | \
+          docker login --username AWS --password-stdin 056449379091.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build Image
+        run: docker build -t otel-php-app .
+
+      - name: Tag Image
+        run: docker tag otel-php-app:latest 056449379091.dkr.ecr.us-east-1.amazonaws.com/otel-php-app:latest
+
+      - name: Push Image
+        run: docker push 056449379091.dkr.ecr.us-east-1.amazonaws.com/otel-php-app:latest
