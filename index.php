@@ -3,7 +3,20 @@ use OpenTelemetry\API\Logs\LogRecord;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\Context\Context;
 
-// 1. Setup Otel (Traces and Logs)
+/**
+ * ------------------------------------------------------------------------
+ * 1. ALB HEALTH CHECK BYPASS
+ * ------------------------------------------------------------------------
+ * We handle this immediately to ensure the ALB marks the target as healthy
+ * even if the OTel collector or Database is temporarily unreachable.
+ */
+if ($_SERVER['REQUEST_URI'] === '/health') {
+    header('Content-Type: text/plain');
+    http_response_code(200);
+    exit('OK');
+}
+
+// 2. Setup Otel (Traces and Logs)
 $otel = require 'bootstrap.php';
 $tracer = $otel['tracer'];
 $traceProvider = $otel['provider'];
@@ -14,16 +27,16 @@ $logProvider = $logData['provider'];
 
 require 'AutoPDO.php';
 
-// 2. Start Root Span
+// 3. Start Root Span
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $uri = $_SERVER['REQUEST_URI'] ?? '/';
 $span = $tracer->spanBuilder("$method $uri")->startSpan();
 
-// CRITICAL: Activate the scope so the tracer knows this is the "Parent"
+// Activate the scope so the tracer knows this is the "Parent"
 $scope = $span->activate(); 
 $currentContext = Context::getCurrent();
 
-// Set high-level attributes for SigNoz
+// Set high-level attributes for SigNoz/OTel
 $span->setAttribute('http.method', $method);
 $span->setAttribute('http.target', $uri);
 
@@ -34,11 +47,13 @@ try {
             ->setContext($currentContext)
     );
 
-    // Initialize Database
+    /**
+     * NOTE: Ensure your 'mysql' hostname matches your service discovery name.
+     * If this fails, it will be caught by the catch block below.
+     */
     $pdo = new AutoPDO("mysql:host=mysql;dbname=test", "root", "root");
     $pdo->setTracer($tracer);
     
-    // This call will now automatically see the active scope and nest inside it
     $sql = "SELECT * FROM products";
     $stmt = $pdo->query($sql);
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -50,7 +65,6 @@ try {
             ->setAttribute('db.rows', count($data))
     );
 
-    // Set Status and Status Code for Golden Signals
     $span->setAttribute('http.status_code', 200);
     $span->setStatus(StatusCode::STATUS_OK);
 
@@ -69,14 +83,27 @@ try {
     );
 
     http_response_code(500);
-    echo json_encode(["error" => "Internal Server Error"]);
+    echo json_encode([
+        "error" => "Internal Server Error",
+        "debug_message" => $e->getMessage()
+    ]);
 
 } finally {
     // 4. End the Root Span and detach the scope
     $span->end();
     $scope->detach(); 
     
-    // Flush data
-    $logProvider->shutdown();
-    $traceProvider->shutdown();
-}
+    /**
+     * ------------------------------------------------------------------------
+     * CRITICAL FIX: Wrap provider shutdown in a try-catch.
+     * This prevents "Could not resolve host: otel" from causing a 500 error.
+     * ------------------------------------------------------------------------
+     */
+    try {
+        if (isset($logProvider)) {
+            $logProvider->shutdown();
+        }
+        if (isset($traceProvider)) {
+            $traceProvider->shutdown();
+        }
+    } catch

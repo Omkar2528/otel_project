@@ -50,8 +50,9 @@ resource "aws_lb_target_group" "tg" {
   vpc_id      = data.aws_vpc.default.id
 
   health_check {
-    path                = "/health"   # 🔥 FIXED (DO NOT USE "/" if app returns 500)
-    matcher             = "200-399"
+    # This matches the route added in index.php
+    path                = "/health"
+    matcher             = "200"
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2
@@ -75,3 +76,8 @@ resource "aws_lb_listener" "listener" {
 resource "aws_ecs_cluster" "cluster" {
   name = "otel-cluster"
 }
+
+# NOTE: In your aws_ecs_task_definition (not shown), 
+# ensure you set the environment variable:
+# OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318" 
+# if using a sidecar.
